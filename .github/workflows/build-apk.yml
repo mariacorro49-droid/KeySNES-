@@ -1,0 +1,131 @@
+name: Build KeySNES
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preparar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android SDK, NDK e CMake
+        run: |
+          yes | sdkmanager --licenses || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "ndk;26.1.10909125" \
+            "cmake;3.22.1"
+
+      - name: Encontrar ZIP do KeySNES
+        run: |
+          ZIP_FILE="./KeySNES-1.0.2-ZIP-only-GitHub-ready.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERRO: ZIP do KeySNES não encontrado."
+            echo "Arquivos disponíveis:"
+            find . -maxdepth 2 -type f
+            exit 1
+          fi
+
+          echo "ZIP encontrado: $ZIP_FILE"
+
+          mkdir -p extracted
+
+          unzip -q "$ZIP_FILE" -d extracted
+
+      - name: Localizar projeto Android
+        run: |
+          GRADLEW=$(find extracted -type f -name "gradlew" | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERRO: gradlew não encontrado dentro do ZIP."
+            echo "Estrutura extraída:"
+            find extracted -maxdepth 5 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "Gradle encontrado em: $GRADLEW"
+          echo "Projeto encontrado em: $PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Dar permissão ao Gradle
+        run: |
+          chmod +x "$PROJECT_DIR/gradlew"
+
+      - name: Verificar projeto
+        run: |
+          echo "Projeto:"
+          ls -la "$PROJECT_DIR"
+
+          echo ""
+          echo "Gradle:"
+          "$PROJECT_DIR/gradlew" --version
+
+      - name: Compilar KeySNES
+        run: |
+          cd "$PROJECT_DIR"
+
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+      - name: Verificar APK
+        run: |
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERRO: APK não foi gerado."
+            exit 1
+          fi
+
+          echo "APK gerado:"
+          echo "$APK"
+
+          ls -lh "$APK"
+
+      - name: Renomear APK
+        run: |
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          cp "$APK" \
+            "$PROJECT_DIR/app/build/outputs/apk/debug/KeySNES-1.0.0-debug.apk"
+
+          echo "APK final:"
+          ls -lh \
+            "$PROJECT_DIR/app/build/outputs/apk/debug/KeySNES-1.0.0-debug.apk"
+
+      - name: Enviar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeySNES-1.0.0-debug
+          path: "**/app/build/outputs/apk/debug/KeySNES-1.0.0-debug.apk"
+          if-no-files-found: error
