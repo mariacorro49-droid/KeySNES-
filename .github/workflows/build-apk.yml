@@ -38,7 +38,7 @@ jobs:
 
       - name: Encontrar ZIP do KeySNES
         run: |
-          ZIP_FILE="./KeySNES-1.0.2-ZIP-only-GitHub-ready.zip"
+          ZIP_FILE="./KeySNES-1.0.3-ZIP-only-GitHub-ready.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERRO: ZIP do KeySNES não encontrado."
